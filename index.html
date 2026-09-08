@@ -1,0 +1,714 @@
+<title>SBEL Field Kit</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+:root{
+  --bg:#EEF1F5; --panel:#FFFFFF; --panel-2:#F6F8FA; --line:#DCE2EA; --line-2:#C4CDD8;
+  --ink:#141922; --ink-2:#48525F; --muted:#78838F;
+  --accent:#1F5FA8; --accent-soft:#E3EDF8;
+  --todo:#8A96A3; --visit:#B37400; --signed:#1F7A4D; --declined:#A33232; --absent:#6D4AA8;
+  --todo-bg:#EDF0F3; --visit-bg:#FBF1DE; --signed-bg:#E3F2EA; --declined-bg:#F8E7E7; --absent-bg:#EEE9F8;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1116; --panel:#161A21; --panel-2:#1D222B; --line:#262C36; --line-2:#39414E;
+    --ink:#E7EBF1; --ink-2:#B2BCC9; --muted:#818D9C;
+    --accent:#79B0E8; --accent-soft:#152532;
+    --todo:#8A96A3; --visit:#E0A63A; --signed:#5FBF8C; --declined:#DE8585; --absent:#A98CE0;
+    --todo-bg:#1B2029; --visit-bg:#2A2113; --signed-bg:#12241B; --declined-bg:#271818; --absent-bg:#1F1A2C;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1116; --panel:#161A21; --panel-2:#1D222B; --line:#262C36; --line-2:#39414E;
+  --ink:#E7EBF1; --ink-2:#B2BCC9; --muted:#818D9C;
+  --accent:#79B0E8; --accent-soft:#152532;
+  --todo:#8A96A3; --visit:#E0A63A; --signed:#5FBF8C; --declined:#DE8585; --absent:#A98CE0;
+  --todo-bg:#1B2029; --visit-bg:#2A2113; --signed-bg:#12241B; --declined-bg:#271818; --absent-bg:#1F1A2C;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:"Public Sans",-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:15px;line-height:1.5;overflow:hidden;
+}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- shell ---------- */
+.app{display:grid;grid-template-rows:auto auto 1fr;height:100dvh;min-height:0}
+
+.bar{
+  background:var(--panel);border-bottom:1px solid var(--line);
+  padding:9px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+}
+.brand{font-weight:700;font-size:15px;letter-spacing:-.01em;white-space:nowrap}
+.brand span{color:var(--accent)}
+.counts{
+  display:flex;gap:5px;flex-wrap:wrap;margin-left:auto;
+  font-family:"IBM Plex Mono",monospace;font-size:11px;font-variant-numeric:tabular-nums;
+}
+.cpill{
+  padding:3px 8px;border-radius:20px;font-weight:600;
+  border:1px solid var(--line-2);white-space:nowrap;
+}
+.cpill.t{background:var(--todo-bg);color:var(--todo)}
+.cpill.v{background:var(--visit-bg);color:var(--visit)}
+.cpill.s{background:var(--signed-bg);color:var(--signed)}
+.cpill.d{background:var(--declined-bg);color:var(--declined)}
+
+.filters{
+  background:var(--panel);border-bottom:1px solid var(--line);
+  padding:8px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+}
+select,input[type=search]{
+  background:var(--panel-2);border:1px solid var(--line);border-radius:7px;
+  padding:6px 9px;font-size:13px;max-width:190px;
+}
+input[type=search]{flex:1;min-width:120px}
+.btn{
+  background:var(--panel-2);border:1px solid var(--line);border-radius:7px;
+  padding:6px 11px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;
+}
+.btn:hover{border-color:var(--line-2)}
+.btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.ghost{background:transparent}
+
+.main{display:grid;grid-template-columns:1fr 430px;min-height:0}
+#map{height:100%;width:100%;background:var(--panel-2)}
+.leaflet-tile{opacity:1 !important}
+
+/* ---------- list ---------- */
+.list{
+  background:var(--panel);border-left:1px solid var(--line);
+  overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;
+}
+.listhead{
+  position:sticky;top:0;z-index:2;background:var(--panel);
+  border-bottom:1px solid var(--line);padding:9px 14px;
+  display:flex;gap:8px;align-items:center;
+  font-family:"IBM Plex Mono",monospace;font-size:11px;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;
+}
+.listhead .sp{margin-left:auto;display:flex;gap:6px}
+.card{border-bottom:1px solid var(--line);padding:12px 14px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:rgba(120,160,220,.18)}
+.card .crow,.card .cname,.card .cmeta,.card .badges,.card .dot{cursor:pointer;touch-action:manipulation}
+.card:active{background:var(--panel-2)}
+.card:hover{background:var(--panel-2)}
+.card.sel{background:var(--accent-soft)}
+.card.done{opacity:.62}
+.crow{display:flex;gap:9px;align-items:flex-start}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;margin-top:6px}
+.cname{font-weight:600;font-size:14.5px;line-height:1.3;flex:1;min-width:0}
+.cstar{
+  background:none;border:none;cursor:pointer;font-size:15px;padding:0 2px;
+  color:var(--line-2);flex:none;line-height:1;
+}
+.cstar.on{color:#E0A63A}
+.cmain{flex:1;min-width:0;display:flex;gap:9px;align-items:flex-start;background:none;border:none;padding:0;text-align:left;cursor:pointer;font:inherit;color:inherit;touch-action:manipulation}
+.cmeta{font-size:12.5px;color:var(--muted);margin:3px 0 0 18px;line-height:1.45;display:block;background:none;border:none;padding:0;text-align:left;width:calc(100% - 18px);cursor:pointer;font-family:inherit;touch-action:manipulation}
+.badges{display:flex;gap:4px;flex-wrap:wrap;margin:7px 0 0 18px}
+.bdg{
+  font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.05em;
+  text-transform:uppercase;font-weight:600;padding:2px 6px;border-radius:4px;
+  border:1px solid var(--line-2);color:var(--ink-2);background:var(--panel-2);
+}
+.bdg.ads{background:var(--visit-bg);color:var(--visit);border-color:var(--visit)}
+.bdg.ig{background:var(--absent-bg);color:var(--absent);border-color:var(--absent)}
+.bdg.lnk{text-decoration:none;cursor:pointer}
+.bdg.lnk:hover{filter:brightness(1.25)}
+.detail{margin:10px 0 0 18px;display:none;flex-direction:column;gap:8px}
+.card.open .detail{display:flex}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.act{
+  background:var(--panel-2);border:1px solid var(--line);border-radius:6px;
+  padding:5px 10px;font-size:12.5px;font-weight:600;text-decoration:none;
+  color:var(--ink);cursor:pointer;
+}
+.act.call{background:var(--signed-bg);color:var(--signed);border-color:var(--signed)}
+.status{display:flex;gap:5px;flex-wrap:wrap}
+.st{
+  border:1px solid var(--line);background:var(--panel-2);border-radius:6px;
+  padding:5px 9px;font-size:12px;font-weight:600;cursor:pointer;
+}
+.st.v.on{background:var(--visit-bg);color:var(--visit);border-color:var(--visit)}
+.st.s.on{background:var(--signed-bg);color:var(--signed);border-color:var(--signed)}
+.st.d.on{background:var(--declined-bg);color:var(--declined);border-color:var(--declined)}
+.st.a.on{background:var(--absent-bg);color:var(--absent);border-color:var(--absent)}
+.note{
+  width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;
+  padding:7px 9px;font-size:13px;resize:vertical;min-height:34px;font-family:inherit;
+}
+.empty{padding:44px 20px;text-align:center;color:var(--muted);font-size:14px}
+.more{padding:12px;text-align:center}
+
+/* mobile */
+.who{font-weight:700}
+.sync{font-family:"IBM Plex Mono",monospace;font-size:11px;padding:4px 9px;border-radius:20px;
+  border:1px solid var(--line);white-space:nowrap}
+.sync.ok{background:var(--signed-bg);color:var(--signed);border-color:var(--signed)}
+.sync.pending{background:var(--visit-bg);color:var(--visit);border-color:var(--visit)}
+.sync.off{background:var(--declined-bg);color:var(--declined);border-color:var(--declined)}
+.gate[hidden]{display:none!important}
+.gate{position:fixed;inset:0;background:var(--bg);z-index:3000;display:flex;align-items:center;
+  justify-content:center;padding:24px}
+.gate .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  padding:26px;max-width:380px;width:100%}
+.gate h2{margin:0 0 6px;font-size:19px}
+.gate p{margin:0 0 16px;color:var(--muted);font-size:14px}
+.gate select{width:100%;padding:12px;font-size:16px;margin-bottom:12px}
+.gate button{width:100%;padding:13px;border:none;border-radius:9px;background:var(--accent);
+  color:#fff;font-weight:700;font-size:15px;cursor:pointer}
+.fbtn{display:none}
+.switcher{display:none}
+
+@media (max-width:860px){
+  body{font-size:16px}
+  .app{grid-template-rows:auto auto 1fr}
+
+  /* top bar: brand + counts on one compact line */
+  .bar{padding:8px 12px;gap:8px}
+  .brand{font-size:14px}
+  .counts{width:100%;margin-left:0;order:5;gap:4px}
+  .cpill{padding:3px 7px;font-size:10.5px}
+  .fbtn{display:inline-block;margin-left:auto;order:2;padding:7px 13px}
+  .fbtn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  /* Filters collapse behind the button — they ate half the screen.
+     Collapse by HEIGHT, not display:none: display:none removes the element
+     from the grid, which slides .main up into the auto row and leaves the
+     1fr row empty, giving the map zero height. */
+  .filters{
+    padding:0 12px;gap:7px;max-height:0;overflow:hidden;
+    border-bottom-color:transparent;
+  }
+  body.filters-open .filters{
+    max-height:none;padding:10px 12px;border-bottom-color:var(--line);
+  }
+  .filters select,.filters input[type=search]{
+    max-width:none;flex:1 1 46%;min-width:0;padding:10px 10px;font-size:14px;
+  }
+  .filters .btn{flex:1 1 46%;padding:10px;text-align:center}
+
+  /* panes swap; leave room for the bottom switcher */
+  .main{grid-template-columns:1fr;grid-template-rows:1fr;padding-bottom:54px}
+  #map{display:none}
+  .list{border-left:none}
+  body.mapview #map{display:block}
+  body.mapview .list{display:none}
+
+  /* thumb-reachable pane switcher */
+  .switcher{
+    display:flex;position:fixed;left:0;right:0;bottom:0;z-index:1200;
+    background:var(--panel);border-top:1px solid var(--line);
+    padding:6px 12px calc(6px + env(safe-area-inset-bottom));gap:8px;
+  }
+  .sw{
+    flex:1;border:1px solid var(--line);background:var(--panel-2);
+    border-radius:9px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;
+  }
+  .sw.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  /* cards: roomier, bigger tap targets */
+  .card{padding:14px 13px}
+  .cname{font-size:15.5px}
+  .cmeta{font-size:13px;margin-left:0}
+  .badges{margin-left:0}
+  .detail{margin-left:0;gap:10px}
+  .cstar{font-size:20px;padding:0 6px}
+  .acts{gap:7px}
+  .act{padding:10px 13px;font-size:13.5px}
+  .st{padding:11px 12px;font-size:13.5px;flex:1 1 46%;text-align:center}
+  .note{font-size:14px;min-height:44px}
+  .listhead{padding:10px 13px}
+}
+
+@media (max-width:380px){
+  .filters select,.filters input[type=search],.filters .btn{flex-basis:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="gate" id="gate" hidden>
+  <div class="box">
+    <h2>Who is using this device?</h2>
+    <p>Pick your name once. Everything you log today is recorded against it.</p>
+    <select id="whoSel"></select>
+    <button id="whoGo">Start</button>
+  </div>
+</div>
+<div class="app">
+  <div class="bar">
+    <span class="brand">SBEL <span>Field Kit</span></span>
+    <button class="btn who" id="whoBtn" title="Change who is using this device">…</button>
+    <span class="sync" id="sync" title="Sync status">•</span>
+    <button class="btn fbtn" id="fToggle" aria-expanded="false">Filters</button>
+    <div class="counts" id="counts"></div>
+  </div>
+
+  <div class="filters">
+    <select id="fZone"></select>
+    <select id="fPrio">
+      <option value="">All priorities</option>
+      <option value="1">Runs Meta ads</option>
+      <option value="2">Online store</option>
+      <option value="3">Google ads</option>
+      <option value="4">Instagram only</option>
+    </select>
+    <select id="fCat"><option value="">All categories</option></select>
+    <select id="fStatus">
+      <option value="">All statuses</option>
+      <option value="todo">Not visited</option>
+      <option value="v">Visited</option>
+      <option value="s">Signed up</option>
+      <option value="d">Declined</option>
+      <option value="a">Owner absent</option>
+    </select>
+    <input type="search" id="fQ" placeholder="Search name or address…">
+    <button class="btn ghost" id="fStar">★ My list</button>
+    <button class="btn ghost" id="btnExport">Export CSV</button>
+  </div>
+
+  <div class="main">
+    <div id="map"></div>
+    <div class="list" id="list"></div>
+  </div>
+</div>
+<nav class="switcher" id="switcher">
+  <button class="sw on" id="tabList">List</button>
+  <button class="sw" id="tabMap">Map</button>
+</nav>
+
+<script>
+let DATA = [];
+let ZONES = [];
+const KEY = 'sbel_field_v1';
+
+/* ---------------- shared backend: identity + offline-safe sync ---------------- */
+const API_URL   = 'https://script.google.com/macros/s/AKfycbzTZFqFwKFE8RPvDfYVXNckFNRzv0nOoMZCXhKAFRCNe7hNoI3TOGN3LdonO-3hLUvH/exec';                 // Apps Script /exec URL
+const INTERNS   = ['Prachi','Shraddha Singh','Anisha Basil','Gungun Lahkar',
+                   'Shimaz','Deeksha Gupta','Tushar Jha','Aniket'];
+const WHO_KEY   = 'sbel_who_v1';
+const QUEUE_KEY = 'sbel_queue_v1';
+
+let WHO   = localStorage.getItem(WHO_KEY) || '';
+let QUEUE = [];
+try { QUEUE = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch(e){ QUEUE = []; }
+const saveQueue = () => { try{ localStorage.setItem(QUEUE_KEY, JSON.stringify(QUEUE)); }catch(e){} };
+
+const STATUS_LABEL = {todo:'To visit', v:'Visited', s:'Signed up',
+                      d:'Declined', a:'Owner absent'};
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,9); }
+
+/* Every status/note change becomes an event. Queued first, sent after,
+   so a dead signal inside a market never loses a visit. */
+function logEvent(d, status, note){
+  if(!API_URL || API_URL.indexOf('http') !== 0) return;   // backend not wired yet
+  QUEUE.push({
+    id: uid(), ts: Date.now(), intern: WHO || '(unset)',
+    name: d.n || '', category: d.c || '',
+    zone: (d.z>=0 && ZONES[d.z] ? ZONES[d.z].name : 'Outside areas'),
+    address: d.a || '', phone: d.p || '', status: STATUS_LABEL[status] || status,
+    note: note || '', instagram: d.ig || '', website: d.w || '', mapsUrl: d.m || ''
+  });
+  saveQueue(); paintSync(); flush();
+}
+
+let flushing = false;
+function flush(){
+  if(flushing || !QUEUE.length) return;
+  if(!navigator.onLine){ paintSync(); return; }
+  flushing = true;
+  const batch = QUEUE.slice(0, 25);
+  fetch(API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},   // simple request: avoids CORS preflight
+    body: JSON.stringify({events: batch})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(out){
+    if(out && out.ok){
+      var sent = {}; batch.forEach(function(e){ sent[e.id]=true; });
+      QUEUE = QUEUE.filter(function(e){ return !sent[e.id]; });
+      saveQueue();
+    }
+  })
+  .catch(function(){
+    /* offline or blocked — events stay queued. The server de-dupes on id,
+       so re-sending the same batch later cannot double-count. */
+  })
+  .then(function(){
+    flushing = false; paintSync();
+    if(QUEUE.length && navigator.onLine) setTimeout(flush, 4000);
+  });
+}
+
+function paintSync(){
+  var el = document.getElementById('sync'); if(!el) return;
+  if(API_URL.indexOf('http') !== 0){ el.className='sync'; el.textContent='local only'; return; }
+  if(!navigator.onLine){ el.className='sync off'; el.textContent='offline · '+QUEUE.length+' held'; return; }
+  if(QUEUE.length){ el.className='sync pending'; el.textContent=QUEUE.length+' syncing'; return; }
+  el.className='sync ok'; el.textContent='all synced';
+}
+
+function paintWho(){
+  var b = document.getElementById('whoBtn'); if(b) b.textContent = WHO || 'Set name';
+}
+
+function askWho(force){
+  var gate = document.getElementById('gate');
+  var sel  = document.getElementById('whoSel');
+  if(!gate || !sel) return;
+  if(WHO && !force){ paintWho(); return; }
+  sel.innerHTML = INTERNS.map(function(n){
+    return '<option'+(n===WHO?' selected':'')+'>'+n+'</option>'; }).join('');
+  gate.hidden = false;
+  document.getElementById('whoGo').onclick = function(){
+    WHO = sel.value; localStorage.setItem(WHO_KEY, WHO);
+    gate.hidden = true; paintWho();
+  };
+}
+
+window.addEventListener('online',  function(){ paintSync(); flush(); });
+window.addEventListener('offline', paintSync);
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) flush(); });
+setInterval(flush, 20000);
+// belt and braces: if anything stalled the first render, recover
+setTimeout(function(){
+  if(!document.querySelector('.card') && typeof render==='function') render();
+}, 1500);
+
+// Zoned businesses first (densest zone first), scattered ones last — so the
+// default list opens on real campaign ground, not stray addresses.
+
+const SC = {todo:'--todo', v:'--visit', s:'--signed', d:'--declined', a:'--absent'};
+const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let S = JSON.parse(localStorage.getItem(KEY) || '{}');
+const save = () => localStorage.setItem(KEY, JSON.stringify(S));
+const rec = id => S[id] || (S[id] = {st:'todo', star:false, note:''});
+const esc = s => String(s||'').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+
+/* ---------- map ---------- */
+// fadeAnimation off: an invalidateSize/fitBounds during the tile fade-in can
+// strand tiles at opacity 0 — they load, get .leaflet-tile-loaded, stay invisible.
+const TOUCH = window.matchMedia('(pointer:coarse)').matches;
+// a 4.5px marker is fine for a mouse and impossible for a finger:
+// bigger radius on touch devices, plus a wide canvas hit tolerance
+const CANVAS = L.canvas({tolerance: TOUCH ? 14 : 4});
+const map = L.map('map', {preferCanvas:true, zoomControl:true, fadeAnimation:false, renderer:CANVAS})
+  .setView([28.545,77.225], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
+const layer = L.layerGroup().addTo(map);
+const markers = {};
+let selected = null;
+
+/* ---------- filters ---------- */
+const $ = id => document.getElementById(id);
+const fZone=$('fZone'), fPrio=$('fPrio'), fCat=$('fCat'), fStatus=$('fStatus'), fQ=$('fQ');
+let starOnly = false;
+
+function buildZoneFilter(){
+  fZone.innerHTML = '<option value="">All territories</option>' +
+    ZONES.map((z,i)=>`<option value="${i}">${esc(z.name)} (${z.n})</option>`).join('') +
+    '<option value="-1">Outside mapped areas</option>';
+  fCat.innerHTML = '<option value="">All categories</option>' +
+    [...new Set(DATA.map(d=>d.c))].filter(Boolean).sort()
+      .map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  // open on the intern's own territory by default
+  var mine = ZONES.findIndex(function(z){ return WHO && z.name.indexOf(WHO)===0; });
+  if(mine>=0) fZone.value=String(mine);
+}
+
+function visible(){
+  const z=fZone.value, p=fPrio.value, c=fCat.value, st=fStatus.value,
+        q=fQ.value.trim().toLowerCase();
+  return DATA.filter(d=>{
+    if(z!=='' && String(d.z)!==z) return false;
+    if(p && String(d.pr)!==p) return false;
+    if(c && d.c!==c) return false;
+    const r=S[d.i];
+    if(st){ if(st==='todo'){ if(r&&r.st!=='todo') return false; } else if(!r||r.st!==st) return false; }
+    if(starOnly && !(r&&r.star)) return false;
+    if(q && !((d.n+' '+d.a).toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+
+/* ---------- counts ---------- */
+function counts(){
+  let t=0,v=0,s=0,dn=0;
+  DATA.forEach(d=>{const r=S[d.i];
+    if(!r||r.st==='todo')t++; else if(r.st==='v')v++; else if(r.st==='s')s++;
+    else if(r.st==='d'||r.st==='a')dn++;});
+  $('counts').innerHTML =
+    `<span class="cpill s">${s} signed up</span>`+
+    `<span class="cpill v">${v} visited</span>`+
+    `<span class="cpill d">${dn} closed</span>`+
+    `<span class="cpill t">${t} to go</span>`;
+}
+
+/* ---------- render ---------- */
+let shown = 0;
+const PAGE = 120;
+
+function drawMap(rows){
+  layer.clearLayers();
+  for(const k in markers) delete markers[k];
+  rows.forEach(d=>{
+    const r=S[d.i], st=(r&&r.st)||'todo';
+    const col=cssv(SC[st]);
+    const m=L.circleMarker([d.lat,d.lng],{
+      renderer: CANVAS,
+      radius: TOUCH ? (st==='s'?10:8) : (st==='s'?6:4.5), color:col, weight:st==='s'?2:1,
+      fillColor:col, fillOpacity:st==='todo'?0.72:0.95
+    });
+    m.on('click',()=>{ select(d.i,true); });
+    m.addTo(layer);
+    markers[d.i]=m;
+  });
+}
+
+function cardHTML(d){
+  const r=rec(d.i), st=r.st;
+  const badges=[];
+  if(d.pr===1) badges.push('<span class="bdg ads">Meta ads</span>');
+  if(d.pr===2) badges.push('<span class="bdg">Online store</span>');
+  if(d.pr===3) badges.push('<span class="bdg">Google ads</span>');
+  // badges for Instagram/website are links, so you can check a business
+  // without opening the card first
+  if(d.ig) badges.push('<a class="bdg ig lnk" href="'+esc(d.ig)+'" target="_blank" rel="noopener">Instagram &#8599;</a>');
+  if(d.w)  badges.push('<a class="bdg lnk" href="'+esc(d.w)+'" target="_blank" rel="noopener">Website &#8599;</a>');
+  const zn = d.z>=0 && ZONES[d.z] ? ZONES[d.z].name : 'Outside areas';
+  return `<div class="card${st!=='todo'?' done':''}" data-id="${d.i}">
+    <div class="crow">
+      <button class="cmain" data-act="toggle" aria-expanded="${st!=='todo'}">
+        <span class="dot" style="background:${cssv(SC[st])}"></span>
+        <span class="cname">${esc(d.n)}</span>
+      </button>
+      <button class="cstar${r.star?' on':''}" data-act="star" title="Add to my list">★</button>
+    </div>
+    <button class="cmeta" data-act="toggle">${esc(d.c)} · ${esc(zn)}<br>${esc(d.a)}</button>
+    <div class="badges">${badges.join('')}</div>
+    <div class="detail">
+      <div class="acts">
+        ${d.p?`<a class="act call" href="tel:${esc(d.p)}">Call ${esc(d.p)}</a>`:''}
+        <a class="act" href="${esc(d.m)}" target="_blank" rel="noopener">Directions</a>
+        ${d.ig?`<a class="act" href="${esc(d.ig)}" target="_blank" rel="noopener">Instagram</a>`:''}
+        ${d.w?`<a class="act" href="${esc(d.w)}" target="_blank" rel="noopener">Website</a>`:''}
+      </div>
+      <div class="status">
+        <button class="st v${st==='v'?' on':''}" data-act="st" data-v="v">Visited</button>
+        <button class="st s${st==='s'?' on':''}" data-act="st" data-v="s">Signed up</button>
+        <button class="st a${st==='a'?' on':''}" data-act="st" data-v="a">Owner absent</button>
+        <button class="st d${st==='d'?' on':''}" data-act="st" data-v="d">Declined</button>
+      </div>
+      <textarea class="note" placeholder="Notes — owner name, callback time, why they said no…">${esc(r.note)}</textarea>
+    </div>
+  </div>`;
+}
+
+function render(reset=true){
+  const rows=visible();
+  if(reset){ shown=0; drawMap(rows); }
+  const list=$('list');
+  if(reset) list.innerHTML='';
+  if(!rows.length){
+    list.innerHTML=`<div class="listhead">0 businesses</div>
+      <div class="empty">Nothing matches these filters.<br>Try clearing search or area.</div>`;
+    counts(); return;
+  }
+  if(reset){
+    list.innerHTML=`<div class="listhead">${rows.length} businesses
+      <span class="sp"><button class="btn ghost" id="zoomFit">Fit map</button></span></div>`;
+    $('zoomFit').onclick=()=>{ if(rows.length) map.fitBounds(L.latLngBounds(rows.map(d=>[d.lat,d.lng])),{padding:[26,26]}); };
+  }
+  const slice=rows.slice(shown, shown+PAGE);
+  const frag=document.createElement('div');
+  frag.innerHTML=slice.map(cardHTML).join('');
+  while(frag.firstChild) list.appendChild(frag.firstChild);
+  shown+=slice.length;
+  const old=document.getElementById('moreBtn'); if(old) old.parentElement.remove();
+  if(shown<rows.length){
+    const w=document.createElement('div'); w.className='more';
+    w.innerHTML=`<button class="btn" id="moreBtn">Show ${Math.min(PAGE,rows.length-shown)} more (${rows.length-shown} left)</button>`;
+    list.appendChild(w);
+    document.getElementById('moreBtn').onclick=()=>render(false);
+  }
+  counts();
+}
+
+function select(id, fromMap){
+  selected=id;
+  document.querySelectorAll('.card.sel').forEach(c=>c.classList.remove('sel'));
+  let card=document.querySelector(`.card[data-id="${id}"]`);
+  if(!card && fromMap){
+    // reveal pages until the card exists
+    while(!card && document.getElementById('moreBtn')){ render(false); card=document.querySelector(`.card[data-id="${id}"]`); }
+  }
+  if(card){
+    card.classList.add('sel');
+    // Only force-open and scroll when the map drove the selection. Doing it on a
+    // list tap re-opened the card the tap had just closed, and yanked the list
+    // out from under your finger.
+    if(fromMap){
+      card.classList.add('open');
+      card.scrollIntoView({block:'center', behavior:'smooth'});
+    }
+  }
+  const d=DATA.find(x=>x.i===id);
+  if(d && fromMap) map.setView([d.lat,d.lng], Math.max(map.getZoom(),16));
+}
+
+/* ---------- interactions ---------- */
+/* iOS Safari does not reliably raise a bubbling click when a plain span or div
+   is tapped, so the same handler is bound to touchend as well. The guard stops
+   the follow-up synthetic click from firing it twice. */
+let lastTouchAt = 0;
+function handleListTap(e){
+  const card=e.target.closest('.card'); if(!card) return;
+  const id=card.dataset.id, r=rec(id);
+  const act=e.target.dataset.act;
+  if(act==='star'){ r.star=!r.star; save(); e.target.classList.toggle('on',r.star); e.stopPropagation(); return; }
+  if(act==='st'){
+    const v=e.target.dataset.v;
+    r.st = (r.st===v) ? 'todo' : v;
+    save();
+    logEvent(DATA.find(function(x){return x.i===id;}) || {}, r.st, r.note);
+    card.querySelectorAll('.st').forEach(b=>b.classList.toggle('on', b.dataset.v===r.st));
+    card.querySelector('.dot').style.background=cssv(SC[r.st]);
+    card.classList.toggle('done', r.st!=='todo');
+    const m=markers[id];
+    if(m){ const c=cssv(SC[r.st]); m.setStyle({color:c,fillColor:c,radius:r.st==='s'?6:4.5,weight:r.st==='s'?2:1,fillOpacity:r.st==='todo'?0.72:0.95}); }
+    counts(); e.stopPropagation(); return;
+  }
+  if(e.target.closest('.act') || e.target.closest('.lnk') || e.target.classList.contains('note')) return;
+  if(act!=='toggle' && !e.target.closest('[data-act="toggle"]')) return;
+  card.classList.toggle('open');
+  select(id,false);
+}
+$('list').addEventListener('touchend', function(e){
+  lastTouchAt = Date.now();
+  handleListTap(e);
+}, {passive:true});
+$('list').addEventListener('click', function(e){
+  if (Date.now() - lastTouchAt < 700) return;   // already handled by touchend
+  handleListTap(e);
+});
+$('list').addEventListener('input', e=>{
+  if(!e.target.classList.contains('note')) return;
+  const card=e.target.closest('.card');
+  var r=rec(card.dataset.id); r.note=e.target.value; save();
+  clearTimeout(window._noteTimer);
+  window._noteTimer=setTimeout(function(){
+    if(r.st && r.st!=='todo') logEvent(DATA.find(function(x){return x.i===card.dataset.id;})||{}, r.st, r.note);
+  }, 2500);
+});
+
+[fZone,fPrio,fCat,fStatus].forEach(el=>el.onchange=()=>render());
+let qt; fQ.oninput=()=>{clearTimeout(qt); qt=setTimeout(()=>render(),200);};
+$('fStar').onclick=e=>{ starOnly=!starOnly; e.target.classList.toggle('on',starOnly); render(); };
+$('tabMap').onclick=()=>{
+  document.body.classList.add('mapview');
+  $('tabMap').classList.add('on'); $('tabList').classList.remove('on');
+  // map was display:none, so it has no measured size until now
+  setTimeout(()=>{
+    map.invalidateSize();
+    const rows=visible();
+    if(rows.length) map.fitBounds(L.latLngBounds(rows.map(d=>[d.lat,d.lng])),{padding:[24,24]});
+  },80);
+};
+$('tabList').onclick=()=>{
+  document.body.classList.remove('mapview');
+  $('tabList').classList.add('on'); $('tabMap').classList.remove('on');
+};
+$('fToggle').onclick=e=>{
+  const open=document.body.classList.toggle('filters-open');
+  e.target.classList.toggle('on',open);
+  e.target.setAttribute('aria-expanded',open);
+};
+
+$('btnExport').onclick=()=>{
+  const head=['Name','Category','Area','Phone','Website','Instagram','Address','Priority','Status','Starred','Notes'];
+  const stName={todo:'',v:'Visited',s:'Signed up',d:'Declined',a:'Owner absent'};
+  const prName={1:'Meta ads',2:'Online store',3:'Google ads',4:'Instagram only'};
+  const rows=[head].concat(DATA.map(d=>{
+    const r=S[d.i]||{};
+    return [d.n,d.c,(d.z>=0&&ZONES[d.z]?ZONES[d.z].name:'Outside areas'),d.p,d.w,d.ig,d.a,
+            prName[d.pr]||'',stName[r.st||'todo'],r.star?'Y':'',(r.note||'').replace(/\n/g,' ')];
+  }));
+  const csv=rows.map(r=>r.map(x=>'"'+String(x==null?'':x).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='SBEL_field_progress_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+};
+
+// Ask who first: rendering 2,000 markers blocks the main thread, and a gate
+// that appears after that render feels frozen on a mid-range phone.
+askWho(false); paintWho(); paintSync();
+
+/* Data now loads separately so the page itself is a few KB and appears
+   instantly. Any failure is shown on screen rather than leaving a blank list. */
+function boot(){
+  var list=document.getElementById('list');
+  list.innerHTML='<div class="empty">Loading businesses…<br><span id="bootmsg" '+
+                 'style="font-size:12px;opacity:.7"></span></div>';
+  fetch('data.json?v=3', {cache:'no-cache'})
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
+    .then(function(d){
+      DATA = d.recs; ZONES = d.zones;
+      DATA.sort(function(a,b){
+        var az=a.z<0?9999:a.z, bz=b.z<0?9999:b.z;
+        if(az!==bz) return az-bz;
+        if(a.pr!==b.pr) return a.pr-b.pr;
+        return String(a.n).localeCompare(String(b.n));
+      });
+      buildZoneFilter();
+      render(); flush(); fitAll();
+    })
+    .catch(function(err){
+      list.innerHTML='<div class="empty">Could not load the business list.<br><br>'+
+        '<b>'+String(err.message)+'</b><br><br>Check your connection and '+
+        '<a href="" style="color:var(--accent)">tap here to retry</a>.</div>';
+    });
+}
+setTimeout(boot, 0);
+document.getElementById('whoBtn').onclick = function(){ askWho(true); };
+// Fit only after layout has settled, otherwise Leaflet measures a zero-height
+// container and lands on an arbitrary street-level view with no pins in frame.
+function fitAll(){
+  map.invalidateSize({animate:false});
+  const b=L.latLngBounds(DATA.map(d=>[d.lat,d.lng]));
+  if(b.isValid()) map.fitBounds(b,{padding:[24,24],animate:false});
+}
+// Leaflet measures the container once at init and caches it. With 3,575 markers
+// rendering and webfonts still landing, that first measurement is wrong often
+// enough that the map draws a small patch of tiles on an empty background.
+// Re-measuring on a short schedule is cheap and makes it deterministic.
+[120,400,900,1800].forEach(ms=>setTimeout(()=>{
+  map.invalidateSize({animate:false});
+  map._onResize && map._onResize();
+},ms));
+setTimeout(fitAll, 60);
+window.addEventListener('resize', ()=>map.invalidateSize());
+
+// Leaflet caches the container size, so any later layout change (fonts landing,
+// the list paginating, switching panes on mobile) leaves it drawing tiles for a
+// stale viewport — the symptom is a small patch of map on an empty background.
+// A ResizeObserver re-measures whenever the container actually changes size.
+let rsz;
+new ResizeObserver(()=>{
+  clearTimeout(rsz);
+  rsz=setTimeout(()=>map.invalidateSize({animate:false}),80);
+}).observe(document.getElementById('map'));
+</script>
