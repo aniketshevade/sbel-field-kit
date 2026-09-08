@@ -469,7 +469,8 @@ function drawMap(rows){
       radius: TOUCH ? (st==='s'?10:8) : (st==='s'?6:4.5), color:col, weight:st==='s'?2:1,
       fillColor:col, fillOpacity:st==='todo'?0.72:0.95
     });
-    m.on('click',()=>{ select(d.i,true); });
+    m.bindPopup(function(){ return popupHTML(d); }, {maxWidth:290, autoPanPadding:[20,20]});
+    m.on('popupopen', function(ev){ wirePopup(ev.popup.getElement(), d, m); });
     m.addTo(layer);
     markers[d.i]=m;
   });
@@ -512,6 +513,55 @@ function cardHTML(d){
       <textarea class="note" placeholder="Notes — owner name, callback time, why they said no…">${esc(r.note)}</textarea>
     </div>
   </div>`;
+}
+
+/* On a phone the list is hidden while the map is showing, so selecting a pin
+   used to open a card nobody could see. The popup carries the details and the
+   logging buttons itself. */
+function popupHTML(d){
+  var r = rec(d.i), st = r.st || 'todo';
+  var zn = (d.z>=0 && ZONES[d.z]) ? ZONES[d.z].name : 'Outside areas';
+  var acts = '';
+  if(d.p)  acts += '<a class="call" href="tel:'+esc(d.p)+'">Call</a>';
+  acts += '<a href="'+esc(d.m)+'" target="_blank" rel="noopener">Directions</a>';
+  if(d.ig) acts += '<a href="'+esc(d.ig)+'" target="_blank" rel="noopener">Instagram</a>';
+  if(d.w)  acts += '<a href="'+esc(d.w)+'" target="_blank" rel="noopener">Website</a>';
+  var btn = function(v,label){
+    return '<button data-v="'+v+'"'+(st===v?' class="on"':'')+'>'+label+'</button>';
+  };
+  return '<div class="pp"><b>'+esc(d.n)+'</b>'+
+    '<div class="m">'+esc(d.c)+' · '+esc(zn)+'<br>'+esc(d.a)+'</div>'+
+    '<div class="acts">'+acts+'</div>'+
+    '<div class="sts">'+btn('v','Visited')+btn('s','Signed up')+
+      btn('a','Owner absent')+btn('d','Declined')+'</div>'+
+    '<div class="done" data-done></div></div>';
+}
+
+function wirePopup(el, d, marker){
+  if(!el) return;
+  var r = rec(d.i);
+  var note = el.querySelector('[data-done]');
+  var paint = function(){
+    el.querySelectorAll('.sts button').forEach(function(b){
+      b.classList.toggle('on', b.dataset.v === r.st);
+    });
+    note.textContent = r.st && r.st!=='todo' ? 'Saved — '+(STATUS_LABEL[r.st]||r.st) : '';
+  };
+  el.querySelectorAll('.sts button').forEach(function(b){
+    b.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      var v = b.dataset.v;
+      r.st = (r.st === v) ? 'todo' : v;
+      save();
+      logEvent(d, r.st, r.note);
+      var c = cssv(SC[r.st]);
+      marker.setStyle({color:c, fillColor:c,
+        radius: TOUCH ? (r.st==='s'?10:8) : (r.st==='s'?6:4.5),
+        weight: r.st==='s'?2:1, fillOpacity: r.st==='todo'?0.72:0.95});
+      paint(); counts(); render();
+    });
+  });
+  paint();
 }
 
 function render(reset=true){
