@@ -291,8 +291,11 @@ const KEY = 'sbel_field_v1';
 
 /* ---------------- shared backend: identity + offline-safe sync ---------------- */
 const API_URL   = 'https://script.google.com/macros/s/AKfycbzTZFqFwKFE8RPvDfYVXNckFNRzv0nOoMZCXhKAFRCNe7hNoI3TOGN3LdonO-3hLUvH/exec';                 // Apps Script /exec URL
-const INTERNS   = ['Prachi','Shraddha Singh','Anisha Basil','Gungun Lahkar',
-                   'Shimaz','Deeksha Gupta','Tushar Jha','Aniket'];
+/* Roster comes from the Sheet at load. This list is only the offline fallback,
+   used when the roster fetch fails (dead signal inside a market). */
+let INTERNS = ['Anisha Basil','Asmi','Gungun Lahkar','Khushal','Shimaz','Aniket'];
+let ROSTER  = [];
+const READ_TOKEN = 'sbel-2026-field';
 const WHO_KEY   = 'sbel_who_v1';
 const QUEUE_KEY = 'sbel_queue_v1';
 
@@ -469,7 +472,8 @@ function drawMap(rows){
       radius: TOUCH ? (st==='s'?10:8) : (st==='s'?6:4.5), color:col, weight:st==='s'?2:1,
       fillColor:col, fillOpacity:st==='todo'?0.72:0.95
     });
-    m.on('click',()=>{ select(d.i,true); });
+    m.bindPopup(function(){ return popupHTML(d); }, {maxWidth:290, autoPanPadding:[20,20]});
+    m.on('popupopen', function(ev){ wirePopup(ev.popup.getElement(), d, m); });
     m.addTo(layer);
     markers[d.i]=m;
   });
@@ -512,6 +516,55 @@ function cardHTML(d){
       <textarea class="note" placeholder="Notes — owner name, callback time, why they said no…">${esc(r.note)}</textarea>
     </div>
   </div>`;
+}
+
+/* On a phone the list is hidden while the map is showing, so selecting a pin
+   used to open a card nobody could see. The popup carries the details and the
+   logging buttons itself. */
+function popupHTML(d){
+  var r = rec(d.i), st = r.st || 'todo';
+  var zn = (d.z>=0 && ZONES[d.z]) ? ZONES[d.z].name : 'Outside areas';
+  var acts = '';
+  if(d.p)  acts += '<a class="call" href="tel:'+esc(d.p)+'">Call</a>';
+  acts += '<a href="'+esc(d.m)+'" target="_blank" rel="noopener">Directions</a>';
+  if(d.ig) acts += '<a href="'+esc(d.ig)+'" target="_blank" rel="noopener">Instagram</a>';
+  if(d.w)  acts += '<a href="'+esc(d.w)+'" target="_blank" rel="noopener">Website</a>';
+  var btn = function(v,label){
+    return '<button data-v="'+v+'"'+(st===v?' class="on"':'')+'>'+label+'</button>';
+  };
+  return '<div class="pp"><b>'+esc(d.n)+'</b>'+
+    '<div class="m">'+esc(d.c)+' · '+esc(zn)+'<br>'+esc(d.a)+'</div>'+
+    '<div class="acts">'+acts+'</div>'+
+    '<div class="sts">'+btn('v','Visited')+btn('s','Signed up')+
+      btn('a','Owner absent')+btn('d','Declined')+'</div>'+
+    '<div class="done" data-done></div></div>';
+}
+
+function wirePopup(el, d, marker){
+  if(!el) return;
+  var r = rec(d.i);
+  var note = el.querySelector('[data-done]');
+  var paint = function(){
+    el.querySelectorAll('.sts button').forEach(function(b){
+      b.classList.toggle('on', b.dataset.v === r.st);
+    });
+    note.textContent = r.st && r.st!=='todo' ? 'Saved — '+(STATUS_LABEL[r.st]||r.st) : '';
+  };
+  el.querySelectorAll('.sts button').forEach(function(b){
+    b.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      var v = b.dataset.v;
+      r.st = (r.st === v) ? 'todo' : v;
+      save();
+      logEvent(d, r.st, r.note);
+      var c = cssv(SC[r.st]);
+      marker.setStyle({color:c, fillColor:c,
+        radius: TOUCH ? (r.st==='s'?10:8) : (r.st==='s'?6:4.5),
+        weight: r.st==='s'?2:1, fillOpacity: r.st==='todo'?0.72:0.95});
+      paint(); counts(); render();
+    });
+  });
+  paint();
 }
 
 function render(reset=true){
@@ -657,16 +710,111 @@ askWho(false); paintWho(); paintSync();
 /* Data now loads separately so the page itself is a few KB and appears
    instantly. Any failure is shown on screen rather than leaving a blank list. */
 function boot(){
+
+/* ---------- territories ----------
+   Assignment is recomputed in the browser from the roster, so adding or
+   removing an intern is a row in the Sheet, not a data rebuild and redeploy.
+
+   Capacity-constrained round robin: each intern in turn claims their nearest
+   unclaimed business until they hit their target. Interns are sorted by name
+   and ties break on record id, so every phone computes the identical map. */
+function allocate(roster){
+  if(!roster || !roster.length) return false;
+
+  var R = 6371, rad = Math.PI/180;
+  function dist(a, blat, blng){
+    var dLat=(blat-a.lat)*rad, dLng=(blng-a.lng)*rad;
+    var la=a.lat*rad, lb=blat*rad;
+    var h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(la)*Math.cos(lb)*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return 2*R*Math.asin(Math.sqrt(h));
+  }
+
+  // candidates: every business with usable coordinates
+  var pool = [];
+  for(var k=0;k<DATA.length;k++){
+    var d=DATA[k];
+    if(typeof d.lat==='number' && typeof d.lng==='number') pool.push(k);
+  }
+
+  // one distance-sorted queue per intern
+  var queues = roster.map(function(p){
+    var q = pool.slice().sort(function(x,y){
+      var dx=dist(p,DATA[x].lat,DATA[x].lng), dy=dist(p,DATA[y].lat,DATA[y].lng);
+      if(dx!==dy) return dx-dy;
+      return String(DATA[x].i) < String(DATA[y].i) ? -1 : 1;   // deterministic tie-break
+    });
+    return {p:p, q:q, at:0, got:0};
+  });
+
+  var claimed = {}, anyRoom = true;
+  while(anyRoom){
+    anyRoom = false;
+    for(var qi=0; qi<queues.length; qi++){
+      var Q = queues[qi];
+      if(Q.got >= Q.p.target) continue;
+      while(Q.at < Q.q.length && claimed[Q.q[Q.at]] !== undefined) Q.at++;
+      if(Q.at >= Q.q.length) continue;
+      claimed[Q.q[Q.at]] = qi;
+      Q.got++; Q.at++;
+      anyRoom = true;
+    }
+  }
+
+  ZONES = roster.map(function(p,idx){
+    return {name: p.name + ' \u2014 ' + (p.area || 'territory'), n: queues[idx].got,
+            lat:p.lat, lng:p.lng, hull:[]};
+  });
+  var reserve = ZONES.length;
+  ZONES.push({name:'Reserve pool (unassigned)', n:0, lat:0, lng:0, hull:[]});
+
+  for(var m=0;m<DATA.length;m++){
+    var owner = claimed[m];
+    DATA[m].z = (owner === undefined) ? reserve : owner;
+  }
+  ZONES[reserve].n = DATA.length - Object.keys(claimed).length;
+
+  INTERNS = roster.map(function(p){ return p.name; });
+  return true;
+}
+
+/* Roster first, then the businesses. A failed roster fetch is not fatal —
+   the kit falls back to the territories baked into data.json. */
+function loadRoster(){
+  if(!API_URL || API_URL.indexOf('http') !== 0) return Promise.resolve(null);
+  return fetch(API_URL + '?roster=1&token=' + encodeURIComponent(READ_TOKEN), {cache:'no-store'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){ return (j && j.ok && j.interns && j.interns.length) ? j.interns : null; })
+    .catch(function(){ return null; });
+}
+
   var list=document.getElementById('list');
   list.innerHTML='<div class="empty">Loading businesses…<br><span id="bootmsg" '+
                  'style="font-size:12px;opacity:.7"></span></div>';
-  fetch('data.json?v=3', {cache:'no-cache'})
+  loadRoster()
+    .then(function(r){
+      ROSTER = r || [];
+      if(ROSTER.length){
+        INTERNS = ROSTER.map(function(p){ return p.name; });
+        // the gate opened before the roster arrived — refresh it in place so a
+        // person added in the Sheet five minutes ago can still pick their name
+        var sel = document.getElementById('whoSel'), gate = document.getElementById('gate');
+        if(sel && gate && !gate.hidden){
+          sel.innerHTML = INTERNS.map(function(n){
+            return '<option'+(n===WHO?' selected':'')+'>'+n+'</option>'; }).join('');
+        }
+      }
+      return fetch('data.json?v=3', {cache:'no-cache'});
+    })
     .then(function(r){
       if(!r.ok) throw new Error('HTTP '+r.status);
       return r.json();
     })
     .then(function(d){
       DATA = d.recs; ZONES = d.zones;
+      if(ROSTER && ROSTER.length){
+        try { allocate(ROSTER); }
+        catch(err){ /* keep the baked territories rather than showing nothing */ }
+      }
       DATA.sort(function(a,b){
         var az=a.z<0?9999:a.z, bz=b.z<0?9999:b.z;
         if(az!==bz) return az-bz;
