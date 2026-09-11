@@ -712,14 +712,45 @@ askWho(false); paintWho(); paintSync();
 function boot(){
 
 /* ---------- territories ----------
-   Assignment is recomputed in the browser from the roster, so adding or
-   removing an intern is a row in the Sheet, not a data rebuild and redeploy.
+   Two rules, both learned the hard way:
 
-   Capacity-constrained round robin: each intern in turn claims their nearest
-   unclaimed business until they hit their target. Interns are sorted by name
-   and ties break on record id, so every phone computes the identical map. */
+   1. An intern already walking a list keeps it. Re-carving a territory under
+      someone mid-campaign invalidates every "already visited" judgement they
+      carry in their head. A roster name that matches a zone baked into
+      data.json is frozen exactly as it is.
+
+   2. Only genuinely new people get allocated, and only out of the free pool:
+      the reserve, plus the territories of anyone who has left.
+
+   A roster row with target 0 is staff, not field — they appear in the identity
+   list so they can log visits, but they are given no territory. */
 function allocate(roster){
   if(!roster || !roster.length) return false;
+
+  var baked  = ZONES.slice();                       // zones as shipped in data.json
+  var bakedZ = DATA.map(function(d){ return d.z; }); // assignment as shipped
+
+  var wants = roster.filter(function(p){ return p.target > 0; });
+
+  var keep = [], fresh = [];
+  wants.forEach(function(p){
+    var zi = -1;
+    for(var i=0;i<baked.length;i++){
+      if(baked[i].name.indexOf(p.name) === 0){ zi = i; break; }
+    }
+    if(zi >= 0) keep.push({p:p, zi:zi}); else fresh.push(p);
+  });
+
+  var keptZi = {};
+  keep.forEach(function(k){ keptZi[k.zi] = true; });
+
+  // free pool: the reserve, plus every territory whose owner has gone
+  var pool = [];
+  for(var k=0;k<DATA.length;k++){
+    if(keptZi[bakedZ[k]]) continue;
+    var d = DATA[k];
+    if(typeof d.lat === 'number' && typeof d.lng === 'number') pool.push(k);
+  }
 
   var R = 6371, rad = Math.PI/180;
   function dist(a, blat, blng){
@@ -729,51 +760,55 @@ function allocate(roster){
     return 2*R*Math.asin(Math.sqrt(h));
   }
 
-  // candidates: every business with usable coordinates
-  var pool = [];
-  for(var k=0;k<DATA.length;k++){
-    var d=DATA[k];
-    if(typeof d.lat==='number' && typeof d.lng==='number') pool.push(k);
-  }
-
-  // one distance-sorted queue per intern
-  var queues = roster.map(function(p){
+  // capacity-constrained round robin over the free pool, newcomers only.
+  // Sorted by name with ties broken on record id, so every phone agrees.
+  var queues = fresh.map(function(p){
     var q = pool.slice().sort(function(x,y){
       var dx=dist(p,DATA[x].lat,DATA[x].lng), dy=dist(p,DATA[y].lat,DATA[y].lng);
       if(dx!==dy) return dx-dy;
-      return String(DATA[x].i) < String(DATA[y].i) ? -1 : 1;   // deterministic tie-break
+      return String(DATA[x].i) < String(DATA[y].i) ? -1 : 1;
     });
-    return {p:p, q:q, at:0, got:0};
+    return {p:p, q:q, at:0, got:0, mine:[]};
   });
 
-  var claimed = {}, anyRoom = true;
-  while(anyRoom){
-    anyRoom = false;
+  var claimed = {}, room = true;
+  while(room){
+    room = false;
     for(var qi=0; qi<queues.length; qi++){
       var Q = queues[qi];
       if(Q.got >= Q.p.target) continue;
       while(Q.at < Q.q.length && claimed[Q.q[Q.at]] !== undefined) Q.at++;
       if(Q.at >= Q.q.length) continue;
-      claimed[Q.q[Q.at]] = qi;
-      Q.got++; Q.at++;
-      anyRoom = true;
+      claimed[Q.q[Q.at]] = qi; Q.mine.push(Q.q[Q.at]);
+      Q.got++; Q.at++; room = true;
     }
   }
 
-  ZONES = roster.map(function(p,idx){
-    return {name: p.name + ' \u2014 ' + (p.area || 'territory'), n: queues[idx].got,
-            lat:p.lat, lng:p.lng, hull:[]};
+  // rebuild the zone list: kept territories first, then the new ones, then reserve
+  var zones = [], remap = {};
+  keep.forEach(function(k){
+    remap[k.zi] = zones.length;
+    zones.push({name: baked[k.zi].name, n: 0, lat: k.p.lat, lng: k.p.lng, hull: []});
   });
-  var reserve = ZONES.length;
-  ZONES.push({name:'Reserve pool (unassigned)', n:0, lat:0, lng:0, hull:[]});
+  var freshBase = zones.length;
+  fresh.forEach(function(p){
+    zones.push({name: p.name + ' \u2014 ' + (p.area || 'territory'), n: 0,
+                lat: p.lat, lng: p.lng, hull: []});
+  });
+  var reserveIdx = zones.length;
+  zones.push({name: 'Reserve pool (unassigned)', n: 0, lat: 0, lng: 0, hull: []});
 
   for(var m=0;m<DATA.length;m++){
-    var owner = claimed[m];
-    DATA[m].z = (owner === undefined) ? reserve : owner;
+    var owner;
+    if(keptZi[bakedZ[m]])              owner = remap[bakedZ[m]];
+    else if(claimed[m] !== undefined)  owner = freshBase + claimed[m];
+    else                               owner = reserveIdx;
+    DATA[m].z = owner;
+    zones[owner].n++;
   }
-  ZONES[reserve].n = DATA.length - Object.keys(claimed).length;
 
-  INTERNS = roster.map(function(p){ return p.name; });
+  ZONES = zones;
+  INTERNS = roster.map(function(p){ return p.name; });   // staff included: they log too
   return true;
 }
 
