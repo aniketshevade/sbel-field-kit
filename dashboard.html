@@ -1,0 +1,261 @@
+<title>SBEL — Field Activity</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#11141d; --panel:#181c27; --panel2:#1e2330; --line:#2a3040;
+  --ink:#e8eaf0; --muted:#8b93a7; --accent:#7aa2f7;
+  --signed:#4ec9a0; --visit:#e0af68; --declined:#f7768e; --absent:#9aa5b8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+     font:15px/1.5 'Public Sans',system-ui,-apple-system,sans-serif;
+     -webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:18px 16px 60px}
+h1{font-size:21px;margin:0;letter-spacing:-.01em}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted);font-size:12.5px;margin-top:3px;font-family:'IBM Plex Mono',monospace}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px}
+button{font:inherit;font-size:13px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);
+       background:var(--panel2);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--accent)}
+/* totals */
+.tot{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-bottom:22px}
+.t{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+.t .n{font-size:27px;font-weight:700;line-height:1.1;font-family:'IBM Plex Mono',monospace}
+.t .l{font-size:11.5px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.05em}
+.t.s .n{color:var(--signed)} .t.v .n{color:var(--visit)}
+.t.d .n{color:var(--declined)} .t.a .n{color:var(--absent)}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+   margin:26px 0 11px;font-weight:600}
+/* intern cards */
+.people{display:grid;gap:10px}
+.p{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.p.stale{border-color:#5a3a44}
+.prow{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.pname{font-weight:600;font-size:16px}
+.pconv{font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:600;color:var(--signed)}
+.pconv.zero{color:var(--muted)}
+.bar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:#222736;margin:11px 0 9px}
+.bar i{display:block;height:100%}
+.pmeta{display:flex;flex-wrap:wrap;gap:11px;font-size:12px;color:var(--muted);
+       font-family:'IBM Plex Mono',monospace}
+.pmeta b{color:var(--ink);font-weight:600}
+.flag{margin-top:9px;font-size:12.5px;color:#f7a8b8;background:#2b1d24;
+      border-radius:7px;padding:7px 10px}
+/* daily chart */
+.chart{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.days{display:flex;align-items:flex-end;gap:10px;height:130px}
+.day{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:0}
+.stack{width:100%;max-width:52px;display:flex;flex-direction:column-reverse;border-radius:5px 5px 0 0;overflow:hidden}
+.stack i{display:block;width:100%}
+.dlab{font-size:10.5px;color:var(--muted);font-family:'IBM Plex Mono',monospace;white-space:nowrap}
+.dnum{font-size:12px;font-weight:600;font-family:'IBM Plex Mono',monospace}
+/* feed */
+.feed{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.e{padding:11px 15px;border-bottom:1px solid var(--line);display:flex;gap:11px;align-items:flex-start}
+.e:last-child{border-bottom:none}
+.pill{font-size:10px;font-weight:600;padding:3px 7px;border-radius:5px;white-space:nowrap;
+      font-family:'IBM Plex Mono',monospace;flex:none;margin-top:1px}
+.pill.s{background:#173a2e;color:var(--signed)} .pill.v{background:#3a2f16;color:var(--visit)}
+.pill.d{background:#3a1c24;color:var(--declined)} .pill.a{background:#252a36;color:var(--absent)}
+.ebody{min-width:0;flex:1}
+.ebiz{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.emeta{font-size:11.5px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px}
+.enote{font-size:13px;color:#b9c0d0;margin-top:5px;font-style:italic}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:13px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle}
+/* gate */
+.gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;
+      padding:24px;z-index:50}
+.gate[hidden]{display:none!important}
+.gbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;max-width:360px;width:100%}
+.gbox h2{margin:0 0 6px;font-size:17px;color:var(--ink);text-transform:none;letter-spacing:0}
+.gbox p{margin:0 0 15px;color:var(--muted);font-size:13.5px}
+.gbox input{width:100%;padding:11px;font:inherit;border-radius:8px;border:1px solid var(--line);
+            background:var(--panel2);color:var(--ink);margin-bottom:11px}
+.gbox button{width:100%;background:var(--accent);color:#0d1017;border:none;font-weight:600;padding:11px}
+.err{color:var(--declined);font-size:13px;margin-top:9px}
+.empty{color:var(--muted);padding:26px;text-align:center}
+</style>
+
+<div class="gate" id="gate" hidden>
+  <div class="gbox">
+    <h2>Field dashboard</h2>
+    <p>Enter the read token. It stays on this device.</p>
+    <input id="tok" type="password" placeholder="token" autocomplete="current-password">
+    <button id="go">Open</button>
+    <div class="err" id="err" hidden>That token was rejected.</div>
+  </div>
+</div>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>SBEL <span>Field Activity</span></h1>
+      <div class="sub" id="stamp">loading…</div>
+    </div>
+    <button id="refresh">Refresh</button>
+  </header>
+  <div id="main"><div class="empty">Loading…</div></div>
+</div>
+
+<script>
+var API = 'https://script.google.com/macros/s/AKfycbwh-tteELiEPeeXvzIl8PU2c91ClOd5prjQuhui1wx1ax5HitZVH3ZTECL3I3SYz8Gs/exec';
+var TOK_KEY = 'sbel_dash_token';
+var TOKEN = localStorage.getItem(TOK_KEY) || '';
+
+var $ = function(id){ return document.getElementById(id); };
+var esc = function(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){
+  return ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]; }); };
+
+var PILL = {'Signed up':'s','Visited':'v','Declined':'d','Owner absent':'a'};
+var COLOUR = {s:'var(--signed)',v:'var(--visit)',d:'var(--declined)',a:'var(--absent)'};
+
+function ago(iso){
+  if(!iso) return 'never';
+  var mins = Math.round((Date.now() - new Date(iso).getTime())/60000);
+  if(mins < 1)   return 'just now';
+  if(mins < 60)  return mins + 'm ago';
+  var hrs = Math.round(mins/60);
+  if(hrs < 24)   return hrs + 'h ago';
+  return Math.round(hrs/24) + 'd ago';
+}
+function hoursSince(iso){
+  return iso ? (Date.now() - new Date(iso).getTime())/3600000 : Infinity;
+}
+function dayLabel(d){
+  var p = d.split('-');
+  var dt = new Date(+p[0], +p[1]-1, +p[2]);
+  return dt.toLocaleDateString('en-GB',{weekday:'short'}) + ' ' + (+p[2]);
+}
+
+function askToken(bad){
+  $('gate').hidden = false;
+  $('err').hidden = !bad;
+  $('tok').focus();
+}
+$('go').onclick = function(){
+  TOKEN = $('tok').value.trim();
+  if(!TOKEN) return;
+  localStorage.setItem(TOK_KEY, TOKEN);
+  $('gate').hidden = true;
+  load();
+};
+$('tok').addEventListener('keydown', function(e){ if(e.key==='Enter') $('go').click(); });
+$('refresh').onclick = function(){ load(true); };
+
+function load(force){
+  if(!TOKEN){ askToken(false); return; }
+  $('stamp').textContent = 'refreshing…';
+  fetch(API + '?summary=1&token=' + encodeURIComponent(TOKEN) + (force ? '&_=' + Date.now() : ''))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d || d.ok === false){ localStorage.removeItem(TOK_KEY); TOKEN=''; askToken(true); return; }
+      render(d);
+    })
+    .catch(function(){
+      $('main').innerHTML = '<div class="empty">Could not reach the backend. Check the connection and refresh.</div>';
+      $('stamp').textContent = 'offline';
+    });
+}
+
+function render(d){
+  var t = d.totals || {};
+  $('stamp').textContent = 'updated ' + new Date(d.updated).toLocaleString('en-GB',
+    {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+
+  var html = '';
+
+  // totals
+  html += '<div class="tot">'
+       +  tile('s', t.signedUp, 'signed up')
+       +  tile('v', t.visited, 'visited')
+       +  tile('d', t.declined, 'declined')
+       +  tile('a', t.absent, 'owner absent')
+       +  tile('', t.all, 'doors logged')
+       +  tile('', (t.all ? (t.signedUp/t.all*100).toFixed(1) : '0.0') + '%', 'conversion')
+       +  '</div>';
+
+  // per intern
+  html += '<h2>By intern</h2><div class="people">';
+  var people = (d.interns || []).filter(function(p){ return p.all > 0; });
+  if(!people.length) html += '<div class="empty">Nothing logged yet.</div>';
+  people.forEach(function(p){
+    var conv = p.all ? (p.signedUp/p.all*100) : 0;
+    var stale = hoursSince(p.last) > 24;
+    html += '<div class="p'+(stale?' stale':'')+'">'
+         +  '<div class="prow"><div class="pname">'+esc(p.intern)+'</div>'
+         +  '<div class="pconv'+(conv?'':' zero')+'">'+conv.toFixed(0)+'%</div></div>'
+         +  bar(p)
+         +  '<div class="pmeta">'
+         +    '<span><b>'+p.signedUp+'</b> signed</span>'
+         +    '<span><b>'+p.visited+'</b> visited</span>'
+         +    '<span><b>'+p.declined+'</b> declined</span>'
+         +    '<span><b>'+p.absent+'</b> absent</span>'
+         +    '<span><b>'+p.all+'</b> total</span>'
+         +    '<span>last '+ago(p.last)+'</span>'
+         +  '</div>'
+         +  (stale ? '<div class="flag">No activity for over a day — worth a message.</div>' : '')
+         +  '</div>';
+  });
+  html += '</div>';
+
+  // daily
+  var days = (d.daily || []).slice(-7);
+  if(days.length){
+    var peak = Math.max.apply(null, days.map(function(x){ return x.all; })) || 1;
+    html += '<h2>Last '+days.length+' active days</h2><div class="chart"><div class="days">';
+    days.forEach(function(x){
+      var h = Math.max(6, Math.round(x.all/peak*100));
+      var sh = x.all ? Math.round(x.signedUp/x.all*h) : 0;
+      html += '<div class="day">'
+           +  '<div class="dnum">'+x.all+'</div>'
+           +  '<div class="stack" style="height:'+h+'px">'
+           +    '<i style="height:'+(h-sh)+'px;background:var(--visit);opacity:.55"></i>'
+           +    '<i style="height:'+sh+'px;background:var(--signed)"></i>'
+           +  '</div>'
+           +  '<div class="dlab">'+dayLabel(x.day)+'</div>'
+           +  '</div>';
+    });
+    html += '</div><div class="legend">'
+         +  '<span><i style="background:var(--signed)"></i>signed up</span>'
+         +  '<span><i style="background:var(--visit);opacity:.55"></i>other doors</span>'
+         +  '</div></div>';
+  }
+
+  // feed
+  html += '<h2>Recent activity</h2><div class="feed">';
+  var rec = d.recent || [];
+  if(!rec.length) html += '<div class="empty">No events yet.</div>';
+  rec.forEach(function(e){
+    var k = PILL[e.status] || 'a';
+    html += '<div class="e">'
+         +  '<span class="pill '+k+'">'+esc(e.status||'?')+'</span>'
+         +  '<div class="ebody">'
+         +    '<div class="ebiz">'+esc(e.business)+'</div>'
+         +    '<div class="emeta">'+esc(e.intern)+' · '+esc(e.zone)+' · '+ago(e.ts)+'</div>'
+         +    (e.note ? '<div class="enote">'+esc(e.note)+'</div>' : '')
+         +  '</div></div>';
+  });
+  html += '</div>';
+
+  $('main').innerHTML = html;
+}
+
+function tile(cls, n, label){
+  return '<div class="t '+cls+'"><div class="n">'+(n==null?0:n)+'</div><div class="l">'+label+'</div></div>';
+}
+function bar(p){
+  var segs = [['s',p.signedUp],['v',p.visited],['d',p.declined],['a',p.absent]];
+  var tot = p.all || 1;
+  return '<div class="bar">' + segs.map(function(x){
+    return x[1] ? '<i style="width:'+(x[1]/tot*100)+'%;background:'+COLOUR[x[0]]+'"></i>' : '';
+  }).join('') + '</div>';
+}
+
+if(!TOKEN) askToken(false); else load();
+setInterval(function(){ if(TOKEN && !document.hidden) load(); }, 120000);
+</script>
