@@ -306,6 +306,8 @@ const saveQueue = () => { try{ localStorage.setItem(QUEUE_KEY, JSON.stringify(QU
 
 const STATUS_LABEL = {todo:'To visit', v:'Visited', s:'Signed up',
                       d:'Declined', a:'Owner absent'};
+const LABEL_TO_CODE = {'To visit':'todo','Visited':'v','Signed up':'s',
+                       'Declined':'d','Owner absent':'a'};
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,9); }
 
@@ -812,15 +814,78 @@ function allocate(roster){
   return true;
 }
 
+/* Reads go over JSONP. Apps Script answers /exec with a 302 to
+   googleusercontent.com, and a cross-origin fetch following that redirect gets
+   a 404 for any response carrying a real payload. A script tag does not. */
+var jsonpN = 0;
+function jsonpGet(params){
+  return new Promise(function(resolve){
+    if(!API_URL || API_URL.indexOf('http') !== 0) return resolve(null);
+    var name = 'sbelK' + (++jsonpN) + '_' + Date.now().toString(36);
+    var tag = document.createElement('script');
+    var done = false;
+    var timer = setTimeout(function(){ finish(null); }, 15000);
+
+    function finish(v){
+      if(done) return;
+      done = true;
+      clearTimeout(timer);
+      try { delete window[name]; } catch(e){ window[name] = undefined; }
+      if(tag.parentNode) tag.parentNode.removeChild(tag);
+      resolve(v);
+    }
+    window[name] = function(d){ finish(d); };
+    tag.onerror = function(){ finish(null); };
+    tag.src = API_URL + '?' + params + '&token=' + encodeURIComponent(READ_TOKEN) +
+              '&callback=' + name + '&_=' + Date.now();
+    document.head.appendChild(tag);
+  });
+}
+
 /* Roster first, then the businesses. A failed roster fetch is not fatal —
    the kit falls back to the territories baked into data.json. */
 function loadRoster(){
-  if(!API_URL || API_URL.indexOf('http') !== 0) return Promise.resolve(null);
-  return fetch(API_URL + '?roster=1&token=' + encodeURIComponent(READ_TOKEN), {cache:'no-store'})
-    .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(j){ return (j && j.ok && j.interns && j.interns.length) ? j.interns : null; })
-    .catch(function(){ return null; });
+  return jsonpGet('roster=1').then(function(j){
+    return (j && j.ok && j.interns && j.interns.length) ? j.interns : null;
+  });
 }
+
+/* The counters used to read localStorage alone, so a fresh phone — or the
+   supervisor's — showed zero however much the team had walked. Seed from the
+   server instead, then re-apply anything still queued locally so an unsynced
+   visit is never overwritten by the older server value. */
+function seedStates(){
+  return jsonpGet('states=1').then(function(j){
+    if(!j || !j.ok || !j.states || !j.states.length) return false;
+
+    var index = {};
+    for(var k=0;k<DATA.length;k++){
+      index[key(DATA[k].n, DATA[k].a)] = DATA[k].i;
+    }
+
+    var applied = 0;
+    j.states.forEach(function(row){
+      var id = index[key(row.n, row.a)];
+      if(id === undefined) return;
+      var r = rec(id);
+      r.st = row.st;
+      if(row.note && !r.note) r.note = row.note;
+      applied++;
+    });
+
+    // anything still in the outbox is newer than whatever the server returned
+    QUEUE.forEach(function(ev){
+      var id = index[key(ev.name, ev.address)];
+      if(id === undefined) return;
+      var code = LABEL_TO_CODE[ev.status];
+      if(code) rec(id).st = code;
+    });
+
+    if(applied) save();
+    return applied > 0;
+  });
+}
+function key(n, a){ return String(n||'').trim().toLowerCase() + '|' + String(a||'').trim().toLowerCase(); }
 
   var list=document.getElementById('list');
   list.innerHTML='<div class="empty">Loading businesses…<br><span id="bootmsg" '+
@@ -850,6 +915,10 @@ function loadRoster(){
         try { allocate(ROSTER); }
         catch(err){ /* keep the baked territories rather than showing nothing */ }
       }
+      // non-blocking: the list renders on local state, then corrects itself
+      seedStates().then(function(changed){
+        if(changed){ try { counts(); render(); } catch(e){} }
+      });
       DATA.sort(function(a,b){
         var az=a.z<0?9999:a.z, bz=b.z<0?9999:b.z;
         if(az!==bz) return az-bz;
