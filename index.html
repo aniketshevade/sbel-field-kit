@@ -83,6 +83,40 @@ input[type=search]{flex:1;min-width:120px}
 #map{height:100%;width:100%;background:var(--panel-2)}
 .leaflet-tile{opacity:1 !important}
 
+/* ---------- my log ---------- */
+.me{display:none;background:var(--panel);border-left:1px solid var(--line);
+    overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;padding:16px;
+    /* without this the nowrap business names widen the grid track past the
+       viewport and the stat tiles get cut off at the right edge */
+    min-width:0;max-width:100%}
+body.meview .me{display:block}
+body.meview .list{display:none}
+.me h3{margin:0 0 3px;font-size:19px}
+.me .who{color:var(--muted);font-size:13px;margin-bottom:15px}
+.meGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:15px}
+.meT{background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:11px 13px}
+.meT .n{font-size:25px;font-weight:700;font-family:"IBM Plex Mono",monospace;line-height:1.1}
+.meT .l{font-size:11px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
+.meT.s .n{color:var(--signed)} .meT.v .n{color:var(--visit)}
+.meT.d .n{color:var(--declined)} .meT.a .n{color:var(--absent)}
+.meBar{height:8px;border-radius:5px;background:var(--panel-2);overflow:hidden;margin:4px 0 6px}
+.meBar i{display:block;height:100%;background:var(--signed)}
+.meProg{font-size:12.5px;color:var(--muted);margin-bottom:18px}
+.meSec{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+       margin:0 0 9px;font-weight:600}
+.meRow{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line);min-width:0}
+.meRow:last-child{border-bottom:none}
+.meTag{font-size:9.5px;font-weight:600;padding:3px 6px;border-radius:5px;white-space:nowrap;
+       font-family:"IBM Plex Mono",monospace;flex:none;margin-top:2px}
+.meTag{background:transparent;border:1px solid currentColor}
+.meTag.s{color:var(--signed)} .meTag.v{color:var(--visit)}
+.meTag.d{color:var(--declined)} .meTag.a{color:var(--absent)}
+.meB{min-width:0;flex:1}
+.meB .nm{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meB .mt{font-size:11.5px;color:var(--muted);font-family:"IBM Plex Mono",monospace;margin-top:2px}
+.meB .nt{font-size:12.5px;color:var(--ink);opacity:.8;margin-top:4px;font-style:italic}
+.meEmpty{color:var(--muted);text-align:center;padding:34px 12px;font-size:14px;line-height:1.6}
+
 /* ---------- list ---------- */
 .list{
   background:var(--panel);border-left:1px solid var(--line);
@@ -201,6 +235,7 @@ input[type=search]{flex:1;min-width:120px}
   .list{border-left:none}
   body.mapview #map{display:block}
   body.mapview .list{display:none}
+  body.meview #map{display:none}
 
   /* thumb-reachable pane switcher */
   .switcher{
@@ -277,11 +312,13 @@ input[type=search]{flex:1;min-width:120px}
   <div class="main">
     <div id="map"></div>
     <div class="list" id="list"></div>
+    <div class="me" id="me"></div>
   </div>
 </div>
 <nav class="switcher" id="switcher">
   <button class="sw on" id="tabList">List</button>
   <button class="sw" id="tabMap">Map</button>
+  <button class="sw" id="tabMe">My log</button>
 </nav>
 
 <script>
@@ -313,6 +350,10 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 
 /* Every status/note change becomes an event. Queued first, sent after,
    so a dead signal inside a market never loses a visit. */
+/* Remember who logged a change and when, so "My log" can be this person's
+   work rather than every status sitting on the device. */
+function stamp(r){ r.by = WHO || r.by || ''; r.at = Date.now(); }
+
 function logEvent(d, status, note){
   if(!API_URL || API_URL.indexOf('http') !== 0) return;   // backend not wired yet
   QUEUE.push({
@@ -556,7 +597,7 @@ function wirePopup(el, d, marker){
     b.addEventListener('click', function(ev){
       ev.stopPropagation();
       var v = b.dataset.v;
-      r.st = (r.st === v) ? 'todo' : v;
+      r.st = (r.st === v) ? 'todo' : v; stamp(r);
       save();
       logEvent(d, r.st, r.note);
       var c = cssv(SC[r.st]);
@@ -633,7 +674,7 @@ function handleListTap(e){
   if(act==='star'){ r.star=!r.star; save(); e.target.classList.toggle('on',r.star); e.stopPropagation(); return; }
   if(act==='st'){
     const v=e.target.dataset.v;
-    r.st = (r.st===v) ? 'todo' : v;
+    r.st = (r.st===v) ? 'todo' : v; stamp(r);
     save();
     logEvent(DATA.find(function(x){return x.i===id;}) || {}, r.st, r.note);
     card.querySelectorAll('.st').forEach(b=>b.classList.toggle('on', b.dataset.v===r.st));
@@ -681,8 +722,91 @@ $('tabMap').onclick=()=>{
 };
 $('tabList').onclick=()=>{
   document.body.classList.remove('mapview');
-  $('tabList').classList.add('on'); $('tabMap').classList.remove('on');
+  document.body.classList.remove('meview');
+  $('tabList').classList.add('on');
+  $('tabMap').classList.remove('on'); $('tabMe').classList.remove('on');
 };
+$('tabMe').onclick=()=>{
+  document.body.classList.remove('mapview');
+  document.body.classList.add('meview');
+  $('tabMe').classList.add('on');
+  $('tabList').classList.remove('on'); $('tabMap').classList.remove('on');
+  renderMe();
+};
+
+/* ---------- my log ----------
+   Everything here is this person's own work. Deliberately no comparison with
+   anyone else: an intern wants to know whether today went well, not where
+   they rank. */
+function renderMe(){
+  var el = $('me');
+  if(!WHO){ el.innerHTML = '<div class="meEmpty">Pick your name first.</div>'; return; }
+
+  var zi = ZONES.findIndex(function(z){ return z.name.indexOf(WHO) === 0; });
+  var mine = [];
+  for(var k=0;k<DATA.length;k++){
+    var d = DATA[k], r = S[d.i];
+    if(!r || !r.st || r.st === 'todo') continue;
+    var ownedByMe = (r.by ? r.by === WHO : (zi >= 0 && d.z === zi));
+    if(ownedByMe) mine.push({d:d, r:r});
+  }
+  mine.sort(function(a,b){ return (b.r.at||0) - (a.r.at||0); });
+
+  var c = {s:0,v:0,d:0,a:0};
+  mine.forEach(function(x){ if(c[x.r.st] !== undefined) c[x.r.st]++; });
+  var done = mine.length;
+  var target = (zi >= 0 && ZONES[zi]) ? ZONES[zi].n : 0;
+  var conv = done ? Math.round(c.s / done * 100) : 0;
+
+  var startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+  var today = mine.filter(function(x){ return (x.r.at||0) >= startOfDay.getTime(); }).length;
+
+  var h = '<h3>'+esc(WHO)+'</h3>'
+        + '<div class="who">'+(zi>=0 ? esc(ZONES[zi].name.replace(WHO+' \u2014 ','')) : 'No territory')
+        + ' \u00b7 '+today+' logged today</div>';
+
+  h += '<div class="meGrid">'
+     +   tileMe('s', c.s, 'signed up')
+     +   tileMe('v', c.v, 'visited')
+     +   tileMe('d', c.d, 'declined')
+     +   tileMe('a', c.a, 'owner absent')
+     + '</div>';
+
+  if(target){
+    var pct = Math.min(100, Math.round(done/target*100));
+    h += '<div class="meBar"><i style="width:'+pct+'%"></i></div>'
+      +  '<div class="meProg">'+done+' of '+target+' doors done \u00b7 '
+      +  conv+'% of them signed up</div>';
+  }
+
+  h += '<div class="meSec">Your log \u2014 newest first</div>';
+  if(!mine.length){
+    h += '<div class="meEmpty">Nothing logged yet.<br>Every door you mark shows up here.</div>';
+  } else {
+    mine.slice(0,120).forEach(function(x){
+      h += '<div class="meRow">'
+        +    '<span class="meTag '+x.r.st+'">'+esc(STATUS_LABEL[x.r.st]||'')+'</span>'
+        +    '<div class="meB">'
+        +      '<div class="nm">'+esc(x.d.n)+'</div>'
+        +      '<div class="mt">'+esc(x.d.c||'')+(x.r.at ? ' \u00b7 '+when(x.r.at) : '')+'</div>'
+        +      (x.r.note ? '<div class="nt">'+esc(x.r.note)+'</div>' : '')
+        +    '</div></div>';
+    });
+    if(mine.length > 120) h += '<div class="meProg">Showing the latest 120 of '+mine.length+'.</div>';
+  }
+  el.innerHTML = h;
+}
+function tileMe(cls, n, label){
+  return '<div class="meT '+cls+'"><div class="n">'+n+'</div><div class="l">'+label+'</div></div>';
+}
+function when(ms){
+  var mins = Math.round((Date.now()-ms)/60000);
+  if(mins < 1)  return 'just now';
+  if(mins < 60) return mins+'m ago';
+  var h = Math.round(mins/60);
+  if(h < 24)    return h+'h ago';
+  return Math.round(h/24)+'d ago';
+}
 $('fToggle').onclick=e=>{
   const open=document.body.classList.toggle('filters-open');
   e.target.classList.toggle('on',open);
@@ -869,6 +993,8 @@ function seedStates(){
       if(id === undefined) return;
       var r = rec(id);
       r.st = row.st;
+      r.by = row.who || r.by || '';
+      if(row.t) r.at = row.t;
       if(row.note && !r.note) r.note = row.note;
       applied++;
     });
@@ -917,7 +1043,10 @@ function key(n, a){ return String(n||'').trim().toLowerCase() + '|' + String(a||
       }
       // non-blocking: the list renders on local state, then corrects itself
       seedStates().then(function(changed){
-        if(changed){ try { counts(); render(); } catch(e){} }
+        if(changed){
+          try { counts(); render();
+                if(document.body.classList.contains('meview')) renderMe(); } catch(e){}
+        }
       });
       DATA.sort(function(a,b){
         var az=a.z<0?9999:a.z, bz=b.z<0?9999:b.z;
