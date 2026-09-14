@@ -145,19 +145,52 @@ $('go').onclick = function(){
   load();
 };
 $('tok').addEventListener('keydown', function(e){ if(e.key==='Enter') $('go').click(); });
-$('refresh').onclick = function(){ load(true); };
+$('refresh').onclick = function(){ load(); };
 
-function load(force){
+/* JSONP, not fetch. Apps Script redirects /exec to googleusercontent.com and a
+   cross-origin fetch following that redirect gets a 404 for any response with a
+   real payload. A script tag follows the same redirect without complaint. */
+var jsonpN = 0;
+function jsonp(params, onData, onFail){
+  var name = 'sbelCB' + (++jsonpN) + '_' + Date.now().toString(36);
+  var tag = document.createElement('script');
+  var done = false;
+
+  var timer = setTimeout(function(){
+    if(done) return;
+    done = true; cleanup(); onFail();
+  }, 25000);
+
+  function cleanup(){
+    clearTimeout(timer);
+    try { delete window[name]; } catch(e){ window[name] = undefined; }
+    if(tag.parentNode) tag.parentNode.removeChild(tag);
+  }
+
+  window[name] = function(d){
+    if(done) return;
+    done = true; cleanup(); onData(d);
+  };
+
+  tag.onerror = function(){
+    if(done) return;
+    done = true; cleanup(); onFail();
+  };
+  tag.src = API + '?' + params + '&callback=' + name + '&_=' + Date.now();
+  document.head.appendChild(tag);
+}
+
+function load(){
   if(!TOKEN){ askToken(false); return; }
   $('stamp').textContent = 'refreshing…';
-  fetch(API + '?summary=1&token=' + encodeURIComponent(TOKEN) + (force ? '&_=' + Date.now() : ''))
-    .then(function(r){ return r.json(); })
-    .then(function(d){
+  jsonp('summary=1&token=' + encodeURIComponent(TOKEN),
+    function(d){
       if(!d || d.ok === false){ localStorage.removeItem(TOK_KEY); TOKEN=''; askToken(true); return; }
       render(d);
-    })
-    .catch(function(){
-      $('main').innerHTML = '<div class="empty">Could not reach the backend. Check the connection and refresh.</div>';
+    },
+    function(){
+      $('main').innerHTML = '<div class="empty">Could not reach the backend. '
+        + 'Check the connection, or confirm the Apps Script is deployed, then refresh.</div>';
       $('stamp').textContent = 'offline';
     });
 }
