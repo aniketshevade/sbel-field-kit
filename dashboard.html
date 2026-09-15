@@ -21,6 +21,33 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:12p
 button{font:inherit;font-size:13px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);
        background:var(--panel2);color:var(--ink);cursor:pointer}
 button:hover{border-color:var(--accent)}
+/* daily update */
+.upd{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:22px}
+.updhead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.updhead b{font-size:15px}
+.updhead input{font:inherit;font-size:13px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);
+               background:var(--panel2);color:var(--ink);color-scheme:dark}
+.upd textarea{width:100%;min-height:300px;font:13.5px/1.5 'IBM Plex Mono',monospace;color:var(--ink);
+              background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:11px;resize:vertical}
+.updbtns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.updbtns .primary{background:var(--accent);color:#0d1017;border:none;font-weight:600}
+.updbtns a{text-decoration:none}
+.copied{color:var(--signed);font-size:12.5px;align-self:center}
+/* attendance */
+.att{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+.att table{border-collapse:collapse;font-size:12.5px;min-width:100%}
+.att th,.att td{padding:8px 7px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap}
+.att th{font-weight:500;color:var(--muted);font-size:11px;font-family:'IBM Plex Mono',monospace}
+.att .nm{text-align:left;position:sticky;left:0;background:var(--panel);font-weight:600;padding-left:14px;
+         font-size:13px;z-index:1}
+.att .sum{font-family:'IBM Plex Mono',monospace;color:var(--muted)}
+.att tr:last-child td{border-bottom:none}
+.ck{display:inline-flex;width:24px;height:24px;border-radius:6px;align-items:center;justify-content:center;
+    font-weight:700;font-size:13px}
+.ck.y{background:#173a2e;color:var(--signed)}
+.ck.n{background:#3a1c24;color:var(--declined)}
+.ck.p{border:1px dashed var(--line);color:var(--muted)}
+.ck.x{color:#3a4050}
 /* totals */
 .tot{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-bottom:22px}
 .t{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
@@ -99,6 +126,8 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute
     </div>
     <button id="refresh">Refresh</button>
   </header>
+  <div id="update"></div>
+  <div id="attend"></div>
   <div id="main"><div class="empty">Loading…</div></div>
 </div>
 
@@ -180,19 +209,196 @@ function jsonp(params, onData, onFail){
   document.head.appendChild(tag);
 }
 
+var ROSTER = null, SUMMARY = null;
+
 function load(){
   if(!TOKEN){ askToken(false); return; }
   $('stamp').textContent = 'refreshing…';
+  var pending = 2, failed = false;
+  function done(){
+    if(--pending) return;
+    if(failed || !SUMMARY) return;
+    render(SUMMARY);
+    renderAttendance();
+    renderUpdate(false);
+  }
   jsonp('summary=1&token=' + encodeURIComponent(TOKEN),
     function(d){
-      if(!d || d.ok === false){ localStorage.removeItem(TOK_KEY); TOKEN=''; askToken(true); return; }
-      render(d);
+      if(!d || d.ok === false){ failed = true; localStorage.removeItem(TOK_KEY); TOKEN=''; askToken(true); done(); return; }
+      SUMMARY = d; done();
     },
     function(){
+      failed = true;
       $('main').innerHTML = '<div class="empty">Could not reach the backend. '
         + 'Check the connection, or confirm the Apps Script is deployed, then refresh.</div>';
       $('stamp').textContent = 'offline';
+      done();
     });
+  // roster is optional: without it, attendance falls back to whoever has logged
+  jsonp('roster=1&token=' + encodeURIComponent(TOKEN),
+    function(r){ if(r && r.ok && r.interns) ROSTER = r.interns; done(); },
+    function(){ done(); });
+}
+
+/* ---------- dates, always in IST: that is when the walking happens ---------- */
+function istToday(){
+  return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata'}).format(new Date());
+}
+function addDays(ymd, n){
+  var p = ymd.split('-'), t = Date.UTC(+p[0], +p[1]-1, +p[2]) + n*86400000;
+  return new Date(t).toISOString().slice(0,10);
+}
+function dow(ymd){ var p = ymd.split('-'); return new Date(Date.UTC(+p[0],+p[1]-1,+p[2])).getUTCDay(); }
+function niceDate(ymd){
+  var p = ymd.split('-'), d = new Date(Date.UTC(+p[0],+p[1]-1,+p[2]));
+  return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
+}
+function first(name){ return String(name||'').split(' ')[0]; }
+
+/* Field interns only: staff (target 0) log visits but do not take attendance. */
+function fieldTeam(){
+  if(ROSTER && ROSTER.length){
+    return ROSTER.filter(function(p){ return p.target > 0; })
+                 .map(function(p){ return {name:p.name, start:p.start||''}; });
+  }
+  var seen = {};
+  (SUMMARY.daily||[]).forEach(function(x){ Object.keys(x.perIntern||x.byIntern||{}).forEach(function(n){ seen[n]=1; }); });
+  return Object.keys(seen).sort().map(function(n){ return {name:n, start:''}; });
+}
+function dayIndex(){
+  var m = {};
+  (SUMMARY.daily||[]).forEach(function(x){ m[x.day] = x; });
+  return m;
+}
+function doorsFor(dayRec, name){
+  if(!dayRec) return {doors:0, signedUp:0};
+  if(dayRec.perIntern && dayRec.perIntern[name]) return dayRec.perIntern[name];
+  var n = (dayRec.byIntern||{})[name] || 0;      // older backend: raw events only
+  return {doors:n, signedUp:0};
+}
+
+/* ---------- attendance ---------- */
+function renderAttendance(){
+  var team = fieldTeam(), idx = dayIndex(), today = istToday();
+  if(!team.length){ $('attend').innerHTML = ''; return; }
+
+  var starts = team.map(function(p){ return p.start; }).filter(Boolean).sort();
+  var logged = Object.keys(idx).sort();
+  var from = starts[0] || logged[0] || today;
+  var days = [];
+  for(var d = from; d <= today && days.length < 60; d = addDays(d,1)) days.push(d);
+
+  var h = '<h2>Attendance \u2014 active means at least one visit logged that day</h2><div class="att"><table><tr><th class="nm">Intern</th>';
+  days.forEach(function(d){
+    var p = d.split('-');
+    h += '<th>'+niceDate(d).split(' ')[0]+'<br>'+(+p[2])+'</th>';
+  });
+  h += '<th>Days</th></tr>';
+
+  team.forEach(function(p){
+    var active = 0, expected = 0;
+    h += '<tr><td class="nm">'+esc(first(p.name))+'</td>';
+    days.forEach(function(d){
+      var st = doorsFor(idx[d], p.name);
+      if(p.start && d < p.start){ h += '<td><span class="ck x" title="not started">\u00b7</span></td>'; return; }
+      if(st.doors > 0){
+        active++; expected++;
+        h += '<td><span class="ck y" title="'+st.doors+' doors, '+st.signedUp+' signed">\u2713</span></td>';
+      } else if(d === today){
+        h += '<td><span class="ck p" title="nothing logged yet today">\u2026</span></td>';
+      } else {
+        expected++;
+        h += '<td><span class="ck n" title="no visits logged">\u2717</span></td>';
+      }
+    });
+    h += '<td class="sum">'+active+'/'+expected+'</td></tr>';
+  });
+  h += '</table></div>';
+  $('attend').innerHTML = h;
+}
+
+/* ---------- 9 PM message for Meghna ---------- */
+var UPD_DATE = null, UPD_DIRTY = false;
+
+function buildMessage(day){
+  var team = fieldTeam(), idx = dayIndex(), rec = idx[day], t = SUMMARY.totals || {};
+  var lines = [], doors = 0, signed = 0, activeCount = 0, onRoster = 0;
+  var listed = {};
+
+  team.forEach(function(p){
+    if(p.start && day < p.start) return;
+    onRoster++;
+    var st = doorsFor(rec, p.name);
+    listed[p.name] = 1;
+    if(st.doors > 0) activeCount++;
+    lines.push({name:p.name, doors:st.doors, signed:st.signedUp});
+  });
+  // staff who went out that day still count toward the day's numbers
+  if(rec && rec.perIntern){
+    Object.keys(rec.perIntern).forEach(function(n){
+      if(!listed[n]) lines.push({name:n, doors:rec.perIntern[n].doors, signed:rec.perIntern[n].signedUp, staff:true});
+    });
+  }
+  lines.forEach(function(l){ doors += l.doors; signed += l.signed; });
+  // active interns, then the supervisor's own doors, then interns with nothing logged
+  var rank = function(l){ return l.staff ? 1 : (l.doors > 0 ? 0 : 2); };
+  lines.sort(function(a,b){ return rank(a)-rank(b) || b.signed-a.signed || b.doors-a.doors; });
+
+  var pct = doors ? Math.round(signed/doors*100) : 0;
+  var m = '*SBEL field update \u2014 ' + niceDate(day) + '*\n\n';
+  m += 'Doors visited: ' + doors + '\n';
+  m += 'Sign-ups: ' + signed + (doors ? ' (' + pct + '%)' : '') + '\n';
+  m += 'Interns active: ' + activeCount + ' of ' + onRoster + '\n\n';
+  lines.forEach(function(l){
+    if(l.doors === 0){ if(!l.staff) m += first(l.name) + ' \u2014 not active\n'; return; }
+    m += first(l.name) + (l.staff ? ' (supervisor)' : '') + ' \u2014 ' + l.doors + (l.doors===1?' door':' doors')
+      +  (l.signed ? ', ' + l.signed + (l.signed===1?' sign-up':' sign-ups') : '') + '\n';
+  });
+  m += '\nCampaign so far: ' + (t.all||0) + ' businesses visited, ' + (t.signedUp||0) + ' signed up';
+  return m;
+}
+
+function renderUpdate(force){
+  var today = istToday();
+  if(!UPD_DATE) UPD_DATE = today;
+  var box = $('update');
+
+  if(!box.firstChild){
+    box.innerHTML =
+      '<div class="upd"><div class="updhead"><b>Daily update for Meghna</b>'
+      + '<input type="date" id="updDate"></div>'
+      + '<textarea id="updText" spellcheck="false"></textarea>'
+      + '<div class="updbtns">'
+      +   '<button class="primary" id="updCopy">Copy message</button>'
+      +   '<a id="updWa" target="_blank" rel="noopener"><button>Open in WhatsApp</button></a>'
+      +   '<button id="updRegen">Regenerate</button>'
+      +   '<span class="copied" id="updOk" hidden>Copied</span>'
+      + '</div></div>';
+    $('updDate').onchange = function(){ UPD_DATE = this.value || today; renderUpdate(true); };
+    $('updText').oninput = function(){ UPD_DIRTY = true; syncWa(); };
+    $('updRegen').onclick = function(){ renderUpdate(true); };
+    $('updCopy').onclick = copyMessage;
+  }
+  $('updDate').value = UPD_DATE;
+  $('updDate').max = today;
+
+  // never overwrite a note typed into the box just because the page auto-refreshed
+  if(force || !UPD_DIRTY){
+    $('updText').value = buildMessage(UPD_DATE);
+    UPD_DIRTY = false;
+  }
+  syncWa();
+}
+function syncWa(){
+  $('updWa').href = 'https://wa.me/?text=' + encodeURIComponent($('updText').value);
+}
+function copyMessage(){
+  var ta = $('updText'), ok = $('updOk');
+  function shown(){ ok.hidden = false; setTimeout(function(){ ok.hidden = true; }, 1800); }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(ta.value).then(shown, fallback);
+  } else fallback();
+  function fallback(){ ta.focus(); ta.select(); try{ document.execCommand('copy'); shown(); }catch(e){} }
 }
 
 function render(d){
@@ -239,13 +445,14 @@ function render(d){
   // daily
   var days = (d.daily || []).slice(-7);
   if(days.length){
-    var peak = Math.max.apply(null, days.map(function(x){ return x.all; })) || 1;
+    var val = function(x){ return x.doors != null ? x.doors : x.all; };
+    var peak = Math.max.apply(null, days.map(val)) || 1;
     html += '<h2>Last '+days.length+' active days</h2><div class="chart"><div class="days">';
     days.forEach(function(x){
-      var h = Math.max(6, Math.round(x.all/peak*100));
-      var sh = x.all ? Math.round(x.signedUp/x.all*h) : 0;
+      var h = Math.max(6, Math.round(val(x)/peak*100));
+      var sh = val(x) ? Math.round(Math.min(x.signedUp, val(x))/val(x)*h) : 0;
       html += '<div class="day">'
-           +  '<div class="dnum">'+x.all+'</div>'
+           +  '<div class="dnum">'+val(x)+'</div>'
            +  '<div class="stack" style="height:'+h+'px">'
            +    '<i style="height:'+(h-sh)+'px;background:var(--visit);opacity:.55"></i>'
            +    '<i style="height:'+sh+'px;background:var(--signed)"></i>'
